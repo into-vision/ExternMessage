@@ -1,0 +1,2 @@
+# ExternalMessage
+文章を外部CSVファイルで記述するためのRPGツクールMV用プラグイン
