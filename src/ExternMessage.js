@@ -1,7 +1,7 @@
 /*:
  * @plugindesc Include message from external file.
- * @author Baizan(@into_vision)
- * @version 1.0.0
+ * @author Baizan(twitter:into_vision)
+ * @version 1.0.1
  * 
  * @param Line Max
  * @desc
@@ -21,8 +21,10 @@
 
 /*:ja
  * @plugindesc 外部ファイルから文章を読み取ります。
- * @author バイザン(@into_vision)
- * @version 1.0.0
+ * @author バイザン(twitter:into_vision)
+ * @version 1.0.1
+ * 		1.0.1 2020/04/25 CSV1行目をヘッダー扱いにしてた仕様を削除
+ * 		1.0.0 2020/04/25 初版公開
  * 
  * @param Line Max
  * @desc メッセージが指定した行数超えたらページ送りします
@@ -101,9 +103,8 @@ var $externMessage =
 		// 2次元配列に変換
 		var result = CsvImportor.parseFromCSV($externMessageCSV);
 
-		// 1要素目はヘッダーなのでスキップ
 		this.map = new Array();
-		for(var i = 1; i < result.length; i++)
+		for(var i = 0; i < result.length; i++)
 		{
 			var currentLine = result[i];
 			var guid = currentLine[0];
