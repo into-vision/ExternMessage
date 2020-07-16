@@ -1,7 +1,7 @@
 /*:
  * @plugindesc Include message from external file.
  * @author Baizan(twitter:into_vision)
- * @version 1.0.1
+ * @version 1.0.2
  * 
  * @param Line Max
  * @desc
@@ -22,9 +22,11 @@
 /*:ja
  * @plugindesc 外部ファイルから文章を読み取ります。
  * @author バイザン(twitter:into_vision)
- * @version 1.0.1
- * 		1.0.1 2020/04/25 CSV1行目をヘッダー扱いにしてた仕様を削除
- * 		1.0.0 2020/04/25 初版公開
+ * @version 1.0.2
+ * 		1.0.2 2020/07/16	パラメーターにセフティー処理追加
+ * 							CRLF(\r\n)改行だとうまく動かない問題に対応
+ * 		1.0.1 2020/04/25	CSV1行目をヘッダー扱いにしてた仕様を削除
+ * 		1.0.0 2020/04/25	初版公開
  * 
  * @param Line Max
  * @desc メッセージが指定した行数超えたらページ送りします
@@ -122,9 +124,13 @@ var $externMessageCSV = null;
 
 (function() {
 	var parameters = PluginManager.parameters('ExternMessage');
-	$externMessage.LineMax = Number(parameters['Line Max']);
-	$externMessage.CsvFilePath = String(parameters['Csv File Path']);
-	$externMessage.UseNameTag = parameters['Use Name Tag'] == 'true';
+	let safety = (name, def_value) => {
+		let value = parameters[name];
+		return (value === undefined) ? def_value : value;
+	};
+	$externMessage.LineMax = Number(safety('Line Max', '4'));
+	$externMessage.CsvFilePath = String(safety('Csv File Path', 'ExternMessage.csv'));
+	$externMessage.UseNameTag = safety('Use Name Tag', 'true') === 'true';
 
 	// DataManagerへ読み込みの予約とセットアップの予約
 	DataManager._databaseFiles.push({ name:'$externMessageCSV',	src:$externMessage.CsvFilePath	});
@@ -145,6 +151,7 @@ var CsvImportor =
 {
 	parseFromCSV: function(text)
 	{
+		text = text.replace(/\r\n/g,"\n");
 		var result = new Array();
 		var currentLine = new Array();
 		var begin = 0;
