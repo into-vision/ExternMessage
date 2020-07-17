@@ -1,7 +1,7 @@
 /*:
  * @plugindesc Include message from external file.
  * @author Baizan(twitter:into_vision)
- * @version 1.0.2
+ * @version 1.0.3
  * 
  * @param Line Max
  * @desc
@@ -22,7 +22,8 @@
 /*:ja
  * @plugindesc 外部ファイルから文章を読み取ります。
  * @author バイザン(twitter:into_vision)
- * @version 1.0.2
+ * @version 1.0.3
+ * 		1.0.3 2020/07/17	最終行の読み取りエラーに対応
  * 		1.0.2 2020/07/16	パラメーターにセフティー処理追加
  * 							CRLF(\r\n)改行だとうまく動かない問題に対応
  * 		1.0.1 2020/04/25	CSV1行目をヘッダー扱いにしてた仕様を削除
@@ -155,28 +156,33 @@ var CsvImportor =
 		var result = new Array();
 		var currentLine = new Array();
 		var begin = 0;
+		let pushToken = (index) => {
+			let token = this.getToken(text, begin, index - begin);
+			currentLine.push(token);
+			begin = index + 1;
+		};
 		for(var index = 0; index < text.length; ++index)
 		{
 			var c = text[index];
 			switch(c)
 			{
 				case ',':
-					token = this.getToken(text, begin, index - begin);
-					currentLine.push(token);
-					begin = index + 1;
+					pushToken(index);
 					break;
 				case '"':
 					index = this.nextDoubleQuat(text, index + 1);
 					break;
 				case '\n':
-					token = this.getToken(text, begin, index - begin);
-					currentLine.push(token);
-					begin = index + 1;
-
+					pushToken(index);
 					result.push(currentLine);
 					currentLine = new Array();
 					break;
 			}
+		}
+		if (index !== begin || currentLine.length > 0) {
+			pushToken(text.length);
+			result.push(currentLine);
+			currentLine = null;
 		}
 		return result;
 	},
