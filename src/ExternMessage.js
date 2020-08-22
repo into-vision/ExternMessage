@@ -1,7 +1,7 @@
 /*:
  * @plugindesc Include message from external file.
  * @author Baizan(twitter:into_vision)
- * @version 1.0.3
+ * @version 1.0.4
  * 
  * @param Line Max
  * @desc
@@ -22,7 +22,8 @@
 /*:ja
  * @plugindesc 外部ファイルから文章を読み取ります。
  * @author バイザン(twitter:into_vision)
- * @version 1.0.3
+ * @version 1.0.4
+ * 		1.0.4 2020/08/22	ツクールMZに対応。具体的には名前ウィンドウ対応。
  * 		1.0.3 2020/07/17	最終行の読み取りエラーに対応
  * 		1.0.2 2020/07/16	パラメーターにセフティー処理追加
  * 							CRLF(\r\n)改行だとうまく動かない問題に対応
@@ -318,16 +319,18 @@ var CsvImportor =
 			// 101のparametersは[FaceName, FaceId, Background, PositionType]
 			// 参照:Game_Interpreter.prototype.executeCommand
 			if (lineCount >= $externMessage.LineMax) {
-				dest.push({ code: 101, indent: item.indent, parameters: createParam101(lastFace, lastFaceID) });
+				dest.push({ code: 101, indent: item.indent, parameters: createParam101(lastFace, lastFaceID, lastName) });
 				lineCount = 0;
 			}
 
 			// ページごとに名前タグの効果が切れるので挿入し直す
 			var name_tag_only = false;
-			if (lineCount == 0 && lastName.length > 0) {
-				if ($externMessage.UseNameTag) {
-					name_tag_only = message.length == 0;
-					message = "\\n<" + lastName + ">" + message;
+			if (isGameMakerMV()) {
+				if (lineCount == 0 && lastName.length > 0) {
+					if ($externMessage.UseNameTag) {
+						name_tag_only = message.length == 0;
+						message = "\\n<" + lastName + ">" + message;
+					}
 				}
 			}
 
@@ -348,12 +351,12 @@ var CsvImportor =
 			// フェードアウト
 			message = parseCmd(message, ":fadeout", args => {
 				dest.push({ code: 221, indent: item.indent, parameters: [ ] });
-				dest.push({ code: 101, indent: item.indent, parameters: createParam101(lastFace, lastFaceID) });
+				dest.push({ code: 101, indent: item.indent, parameters: createParam101(lastFace, lastFaceID, lastName) });
 			});
 			// フェードイン
 			message = parseCmd(message, ":fadein", args => {
 				dest.push({ code: 222, indent: item.indent, parameters: [ ] });
-				dest.push({ code: 101, indent: item.indent, parameters: createParam101(lastFace, lastFaceID) });
+				dest.push({ code: 101, indent: item.indent, parameters: createParam101(lastFace, lastFaceID, lastName) });
 			});
 
 			// 1行追加
@@ -361,7 +364,7 @@ var CsvImportor =
 				// Faceが再セットされるタイミングがないのでここで行う
 				if (prevFace != lastFace) {
 					prevFace = lastFace;
-					dest.push({ code: 101, indent: item.indent, parameters: createParam101(lastFace, lastFaceID) });
+					dest.push({ code: 101, indent: item.indent, parameters: createParam101(lastFace, lastFaceID, lastName) });
 				}
 				dest.push({ code: item.code, indent: item.indent, parameters: [ message ] });
 				lineCount++;
@@ -370,11 +373,20 @@ var CsvImportor =
 	}
 
 	// 101コマンド用の引数を構築します。
-	createParam101 = function(faceName, faceID) {
-		if (faceID < 0 || faceName == "") {
-			return ["", 0, 0, 2];
+	createParam101 = function(faceName, faceID, speakName) {
+		if(isGameMakerMV() || !$externMessage.UseNameTag) {
+			if (faceID < 0 || faceName == "") {
+				return ["", 0, 0, 2];
+			} else {
+				return [faceName, faceID, 0, 2];
+			}
 		} else {
-			return [faceName, faceID, 0, 2];
+			// MZでは4要素目に名前を追加することで名前ウィンドウが表示されるようになった
+			if (faceID < 0 || faceName == "") {
+				return ["", 0, 0, 2, speakName];
+			} else {
+				return [faceName, faceID, 0, 2, speakName];
+			}
 		}
 	};
 	
@@ -463,4 +475,8 @@ var CsvImportor =
 		}
 		return lineCount;
 	};
+
+	isGameMakerMV = function() {
+		return Utils.RPGMAKER_NAME === "MV";
+	}
 })();
