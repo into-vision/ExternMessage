@@ -1,7 +1,7 @@
 /*:
  * @plugindesc Include message from external file.
  * @author Baizan(twitter:into_vision)
- * @version 1.0.4
+ * @version 1.0.5
  * 
  * @param Line Max
  * @desc
@@ -22,7 +22,8 @@
 /*:ja
  * @plugindesc 外部ファイルから文章を読み取ります。
  * @author バイザン(twitter:into_vision)
- * @version 1.0.4
+ * @version 1.0.5
+ * 		1.0.5 2020/09/12	イベントコマンド実行後のメッセージが表示されない問題の修正
  * 		1.0.4 2020/08/22	ツクールMZに対応。具体的には名前ウィンドウ対応。
  * 		1.0.3 2020/07/17	最終行の読み取りエラーに対応
  * 		1.0.2 2020/07/16	パラメーターにセフティー処理追加
@@ -347,16 +348,17 @@ var CsvImportor =
 			message = parseCmd(message, ":event", args => {
 				var id = tryReplace(args)[0];
 				dest.push({ code: 117, indent: item.indent, parameters: [ parseInt(id) ] });
+				lineCount = $externMessage.LineMax; // 特殊なcodeの実行後は必ず改ページする必要がある
 			});
 			// フェードアウト
 			message = parseCmd(message, ":fadeout", args => {
 				dest.push({ code: 221, indent: item.indent, parameters: [ ] });
-				dest.push({ code: 101, indent: item.indent, parameters: createParam101(lastFace, lastFaceID, lastName) });
+				lineCount = $externMessage.LineMax;
 			});
 			// フェードイン
 			message = parseCmd(message, ":fadein", args => {
 				dest.push({ code: 222, indent: item.indent, parameters: [ ] });
-				dest.push({ code: 101, indent: item.indent, parameters: createParam101(lastFace, lastFaceID, lastName) });
+				lineCount = $externMessage.LineMax;
 			});
 
 			// 1行追加
