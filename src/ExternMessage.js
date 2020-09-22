@@ -1,7 +1,7 @@
 /*:
  * @plugindesc Include message from external file.
  * @author Baizan(twitter:into_vision)
- * @version 1.0.6
+ * @version 1.0.7
  * 
  * @param Line Max
  * @desc
@@ -22,10 +22,11 @@
 /*:ja
  * @plugindesc 外部ファイルから文章を読み取ります。
  * @author バイザン(twitter:into_vision)
- * @version 1.0.6
+ * @version 1.0.7
+ * 		1.0.7 2020/09/22	MZではさらにsetupNewGameが細分化されていたので共通して呼び出される場所で初期化するように
  * 		1.0.6 2020/09/22	イベントテスト/戦闘テスト実行時に'TEST_'の接頭語をつけて読み込まれる仕様を回避するように
  * 		1.0.5 2020/09/12	イベントコマンド実行後のメッセージが表示されない問題の修正
- * 		1.0.4 2020/08/22	ツクールMZに対応。具体的には名前ウィンドウ対応。
+ * 		1.0.4 2020/08/22	ツクールMZに対応。具体的には名前ウィンドウ対応
  * 		1.0.3 2020/07/17	最終行の読み取りエラーに対応
  * 		1.0.2 2020/07/16	パラメーターにセフティー処理追加
  * 							CRLF(\r\n)改行だとうまく動かない問題に対応
@@ -103,6 +104,12 @@
 var $externMessage =
 {
 	setup: function() {
+		// setupはゲーム起動時の他ロード時でも呼ばれる。
+		// しかし内部データは書き換えることは(少なくともこのプラグインでは)無いのでスキップする。
+		if (this.map) {
+			return;
+		}
+
 		// 改行コードを置き換え
 		$externMessageCSV = $externMessageCSV.replace("\r\n", "\n");
 
@@ -139,10 +146,11 @@ var $externMessageCSV = null;
 	// DataManagerへ読み込みの予約とセットアップの予約
 	DataManager._databaseFiles.push({ name:'$externMessageCSV',	src:$externMessage.CsvFilePath	});
 
-	// ロードが完了したら呼ばれるように
-	var _DataManager_setupNewGame = DataManager.setupNewGame;
-	DataManager.setupNewGame = function() {
-		_DataManager_setupNewGame.apply(this, arguments);
+	// もともとsetupNewGame時に呼ぶようにしていたが、MZではsetupNewGame/setupBattleTest/setupEventTestで細分化された。
+	// そのため各setupで共通して呼び出されているcreateGameObjectsで初回のみセットアップするように変更
+	var _DataManager_createGameObjects = DataManager.createGameObjects;
+	DataManager.createGameObjects = function() {
+		_DataManager_createGameObjects.apply(this, arguments);
 		$externMessage.setup();
 	};
 })();
@@ -238,11 +246,12 @@ var CsvImportor =
 			}
 		};
 		xhr.onerror = this._mapLoader || function() {
-			// 戦闘テストまたはイベントテスト実行時に'TEST_'を接頭語にしたファイルが生成されそれが読み込まれる。
+			// 戦闘テストまたはイベントテスト実行時に'Test_'を接頭語にしたファイルが生成されそれが読み込まれる。
 			// しかし外部ファイルはツクールエディタの管理外なので複製されない。それの対処として接頭語が付いてたら読み直す。
 			// 参照：rpg_manager/DataManager.loadDatabase
-			if(src.indexOf('Test_') === 0) {
-				DataManager.loadDataFile(name, src.substr('Test_'.length));
+			var prefix = 'Test_';
+			if(src.indexOf(prefix) === 0) {
+				DataManager.loadDataFile(name, src.substr(prefix.length));
 			} else {
 				DataManager._errorUrl = DataManager._errorUrl || url;
 			}
