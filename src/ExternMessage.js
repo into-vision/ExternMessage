@@ -1,7 +1,7 @@
 /*:
  * @plugindesc Include message from external file.
  * @author Baizan(twitter:into_vision)
- * @version 1.0.5
+ * @version 1.0.6
  * 
  * @param Line Max
  * @desc
@@ -22,7 +22,8 @@
 /*:ja
  * @plugindesc 外部ファイルから文章を読み取ります。
  * @author バイザン(twitter:into_vision)
- * @version 1.0.5
+ * @version 1.0.6
+ * 		1.0.6 2020/09/22	イベントテスト/戦闘テスト実行時に'TEST_'の接頭語をつけて読み込まれる仕様を回避するように
  * 		1.0.5 2020/09/12	イベントコマンド実行後のメッセージが表示されない問題の修正
  * 		1.0.4 2020/08/22	ツクールMZに対応。具体的には名前ウィンドウ対応。
  * 		1.0.3 2020/07/17	最終行の読み取りエラーに対応
@@ -237,7 +238,14 @@ var CsvImportor =
 			}
 		};
 		xhr.onerror = this._mapLoader || function() {
-			DataManager._errorUrl = DataManager._errorUrl || url;
+			// 戦闘テストまたはイベントテスト実行時に'TEST_'を接頭語にしたファイルが生成されそれが読み込まれる。
+			// しかし外部ファイルはツクールエディタの管理外なので複製されない。それの対処として接頭語が付いてたら読み直す。
+			// 参照：rpg_manager/DataManager.loadDatabase
+			if(src.indexOf('Test_') === 0) {
+				DataManager.loadDataFile(name, src.substr('Test_'.length));
+			} else {
+				DataManager._errorUrl = DataManager._errorUrl || url;
+			}
 		};
 		window[name] = null;
 		xhr.send();
