@@ -1,7 +1,7 @@
 /*:
  * @plugindesc Include message from external file.
  * @author Baizan(twitter:into_vision)
- * @version 1.0.7
+ * @version 1.1.0
  * 
  * @param Line Max
  * @desc
@@ -22,7 +22,8 @@
 /*:ja
  * @plugindesc 外部ファイルから文章を読み取ります。
  * @author バイザン(twitter:into_vision)
- * @version 1.0.7
+ * @version 1.1.0
+ * 		1.1.0 2020/09/23	Window関連のコマンド追加。再起コマンド実行可能なテキスト置き換え機能実装
  * 		1.0.7 2020/09/22	MZではさらにsetupNewGameが細分化されていたので共通して呼び出される場所で初期化するように
  * 		1.0.6 2020/09/22	イベントテスト/戦闘テスト実行時に'TEST_'の接頭語をつけて読み込まれる仕様を回避するように
  * 		1.0.5 2020/09/12	イベントコマンド実行後のメッセージが表示されない問題の修正
@@ -295,40 +296,109 @@ var CsvImportor =
 	// メッセージコマンドを変換する
 	Game_Interpreter.convertMessageCommand = function(dest, item)
 	{
+		var context = {
+			lastName: "",
+			lastFace: "",
+			lastFaceID: 0,
+			lineCount: getCurrentLine(dest),
+			windowMode: 0, // 0:通常, 1:暗く, 2:透明
+			layoutMode: 2, // 0:上, 1中, 2下
+			indent: item.indent,
+		};
+
 		// 文章の場合は必ず1行
 		// 参照:Game_Interpreter.prototype.command101
-		var text = item.parameters[0];
+		this.convertMessageCommandCore(dest, item.parameters[0], context);
+	}
 
+	Game_Interpreter.convertMessageCommandCore = function(dest, text, context)
+	{
 		// メッセージ用制御文字を置換
 		text = Game_Interpreter.replaceCtrlText(text);
 
 		// 改行ごとに別メッセージとして処理
 		var messages = text.replace("\r\n", "\n").split("\n");
 
-		var lastName = "";
-		var lastFace = "";
-		var lastFaceID = 0;
-		var prevFace = "";
-		var lineCount = getCurrentLine(dest);
 		for (var message of messages)
 		{
+			// 単語を置き換える。再起コマンド実行可能。
+			var textFound = false;
+			message = parseCmd(message, "\\M", args => {
+				var result = tryReplace(args);
+				if (result.length > 0) {
+					textFound = true;
+					// 文章の間で見つかった場合は一旦結合させてそれを後段ですべて丸投げする。
+					return result[0];
+				} else {
+					return null;
+				}
+			});
+			if (textFound) {
+				// text置き換え及び前後の文字がすべて結合した状態になっている
+				// 文章開始:text[TEST]文章終了→文章開始 置き換え文章 文章終了
+				this.convertMessageCommandCore(dest, message, context);
+
+				// 既に処理済みなのでこの行に関しては後続の処理はスキップして良い
+				continue;
+			}
+
 			// 名前の取り出し
 			message = parseCmd(message, ":name", args => {
 				args = tryReplace(args);
-				lastName = args[0];
+				context.lastName = args[0];
 				// メモ:Faceが変更される場合にウィンドウが一度閉じるアニメーションが挟まります。
-				lastFace = args[1] || "";
+				context.lastFace = args[1] || "";
 				// 顔の番号は初期化する
-				lastFaceID = 0;
-				// ページの最初以外で検出したらページを切り変える
-				if (lineCount != 0) {
-					lineCount = $externMessage.LineMax;
-				}
+				context.lastFaceID = 0;
+				// 名前は変更時は常にページを切り変える
+				context.lineCount = $externMessage.LineMax;
 			});
-
 			// 表情の種類を選択します
 			message = parseCmd(message, ":face", args => {
-				lastFaceID = tryReplace(args)[0];
+				context.lastFaceID = tryReplace(args)[0];
+				context.lineCount = $externMessage.LineMax;
+			});
+			// :pageが含まれていたら次の行でページ送りさせる。
+			message = parseCmd(message, ":page", args => {
+				context.lineCount = $externMessage.LineMax;
+			});
+			// コモンイベントの呼び出し
+			message = parseCmd(message, ":event", args => {
+				var id = tryReplace(args)[0];
+				dest.push({ code: 117, indent: context.indent, parameters: [ parseInt(id) ] });
+				context.lineCount = $externMessage.LineMax; // 特殊なcodeの実行後は必ず改ページする必要がある
+			});
+			// フェードアウト
+			message = parseCmd(message, ":fadeout", args => {
+				dest.push({ code: 221, indent: context.indent, parameters: [ ] });
+				context.lineCount = $externMessage.LineMax;
+			});
+			// フェードイン
+			message = parseCmd(message, ":fadein", args => {
+				dest.push({ code: 222, indent: context.indent, parameters: [ ] });
+				context.lineCount = $externMessage.LineMax;
+			});
+			// ウィンドウの種類
+			message = parseCmd(message, ":bg", args => {
+				if (args === "dim") {
+					context.windowMode = 1;
+				} else if (args === "transparent") {
+					context.windowMode = 2;
+				} else { // args == window
+					context.windowMode = 0;
+				}
+				context.lineCount = $externMessage.LineMax;
+			});
+			// ウィンドウのレイアウト位置
+			message = parseCmd(message, ":layout", args => {
+				if (args === "top") {
+					context.layoutMode = 0;
+				} else if (args === "center") {
+					context.layoutMode = 1;
+				} else {
+					context.layoutMode = 2;
+				}
+				context.lineCount = $externMessage.LineMax;
 			});
 
 			// 3列ごとにページウェイトを挟む
@@ -336,75 +406,48 @@ var CsvImportor =
 			// Game_Interpreter["command" + code] の関数が呼ばれる。
 			// 101のparametersは[FaceName, FaceId, Background, PositionType]
 			// 参照:Game_Interpreter.prototype.executeCommand
-			if (lineCount >= $externMessage.LineMax) {
-				dest.push({ code: 101, indent: item.indent, parameters: createParam101(lastFace, lastFaceID, lastName) });
-				lineCount = 0;
+			if (context.lineCount >= $externMessage.LineMax) {
+				// もし直前に同じ101コマンドがあれば書き換える
+				if (dest.length > 0 && dest[dest.length - 1].code == 101) {
+					dest.length--;
+				}
+				dest.push({ code: 101, indent: context.indent, parameters: createParam101(context.lastFace, context.lastFaceID, context.lastName, context.windowMode, context.layoutMode) });
+				context.lineCount = 0;
 			}
 
 			// ページごとに名前タグの効果が切れるので挿入し直す
 			var name_tag_only = false;
 			if (isGameMakerMV()) {
-				if (lineCount == 0 && lastName.length > 0) {
+				if (context.lineCount == 0 && context.lastName.length > 0) {
 					if ($externMessage.UseNameTag) {
 						name_tag_only = message.length == 0;
-						message = "\\n<" + lastName + ">" + message;
+						message = "\\n<" + context.lastName + ">" + message;
 					}
 				}
 			}
 
-			// 単語を置き換える
-			// 複数行や再起コマンド実行などは対応していない
-			message = parseCmd(message, ":word", args => {
-				return tryReplace(args);
-			});
-			// :pageが含まれていたら次の行でページ送りさせる。
-			message = parseCmd(message, ":page", args => {
-				lineCount = $externMessage.LineMax;
-			});
-			// コモンイベントの呼び出し
-			message = parseCmd(message, ":event", args => {
-				var id = tryReplace(args)[0];
-				dest.push({ code: 117, indent: item.indent, parameters: [ parseInt(id) ] });
-				lineCount = $externMessage.LineMax; // 特殊なcodeの実行後は必ず改ページする必要がある
-			});
-			// フェードアウト
-			message = parseCmd(message, ":fadeout", args => {
-				dest.push({ code: 221, indent: item.indent, parameters: [ ] });
-				lineCount = $externMessage.LineMax;
-			});
-			// フェードイン
-			message = parseCmd(message, ":fadein", args => {
-				dest.push({ code: 222, indent: item.indent, parameters: [ ] });
-				lineCount = $externMessage.LineMax;
-			});
-
-			// 1行追加
+			// 文章を1行追加
 			if (message.length > 0 && !name_tag_only) {
-				// Faceが再セットされるタイミングがないのでここで行う
-				if (prevFace != lastFace) {
-					prevFace = lastFace;
-					dest.push({ code: 101, indent: item.indent, parameters: createParam101(lastFace, lastFaceID, lastName) });
-				}
-				dest.push({ code: item.code, indent: item.indent, parameters: [ message ] });
-				lineCount++;
+				dest.push({ code: 401, indent: context.indent, parameters: [ message ] });
+				context.lineCount++;
 			}
 		}
 	}
 
 	// 101コマンド用の引数を構築します。
-	createParam101 = function(faceName, faceID, speakName) {
+	createParam101 = function(faceName, faceID, speakName, windowMode, layoutMode) {
 		if(isGameMakerMV() || !$externMessage.UseNameTag) {
 			if (faceID < 0 || faceName == "") {
-				return ["", 0, 0, 2];
+				return ["", 0, windowMode, layoutMode];
 			} else {
-				return [faceName, faceID, 0, 2];
+				return [faceName, faceID, windowMode, layoutMode];
 			}
 		} else {
 			// MZでは4要素目に名前を追加することで名前ウィンドウが表示されるようになった
 			if (faceID < 0 || faceName == "") {
-				return ["", 0, 0, 2, speakName];
+				return ["", 0, windowMode, layoutMode, speakName];
 			} else {
-				return [faceName, faceID, 0, 2, speakName];
+				return [faceName, faceID, windowMode, layoutMode, speakName];
 			}
 		}
 	};
@@ -430,7 +473,8 @@ var CsvImportor =
 		return list;
 	};
 	
-	// keyの一致するコマンドがあった場合にメソッドを呼び出します。
+	// keyに一致するコマンドがあった場合にメソッドを呼び出します。
+	// 続けて[]が付与されていたら引数として解釈します。
 	parseCmd = function(text, key, call) {
 		var result = "";
 		var headIdx = 0;
@@ -446,12 +490,16 @@ var CsvImportor =
 
 			// 返却値に文字列が含まれてたらコマンドと置き換える形で追加する
 			var str = call(arg);
-			if (str != undefined)
+			if (str)
 			{
 				result += str;
 			}
 		}
-		return (headIdx == 0) ? text : result;
+		if (headIdx > 0) {
+			return result + text.substr(headIdx);
+		} else {
+			return text;
+		}
 	};
 
 	// []の中の引数を入れ子になった[]を無視して一つの引数として取り出します。
