@@ -1,7 +1,7 @@
 /*:
  * @plugindesc Include message from external file.
  * @author Baizan(twitter:into_vision)
- * @version 1.1.0
+ * @version 1.2.0
  * 
  * @param Line Max
  * @desc
@@ -22,7 +22,9 @@
 /*:ja
  * @plugindesc 外部ファイルから文章を読み取ります。
  * @author バイザン(twitter:into_vision)
- * @version 1.1.0
+ * @version 1.2.0
+ * 		1.2.0 2021/03/06	ツクール変数を添字に指定できるように
+ * 							ツクール変数の添字にもメッセージIDを指定できるように
  * 		1.1.0 2020/09/23	Window関連のコマンド追加。再起コマンド実行可能なテキスト置き換え機能実装
  * 		1.0.7 2020/09/22	MZではさらにsetupNewGameが細分化されていたので共通して呼び出される場所で初期化するように
  * 		1.0.6 2020/09/22	イベントテスト/戦闘テスト実行時に'TEST_'の接頭語をつけて読み込まれる仕様を回避するように
@@ -66,6 +68,11 @@
  * 【イベントエディター中の「文章」に追加される制御文字】
  *   \M[メッセージID]
  *  	CSVファイル内に記述されている一致する「メッセージID」に対応する「メッセージ」へ置き換えます。
+ *  	「メッセージID」は「\V[1]」のようなツクール変数を指定することも可能です。
+ *  	また「TEST_\V[1]」のように連結させて別のメッセージIDを作ることも可能です。
+ *  	さらに「TEST_\V[SELECT_VALUE]」のようにして「メッセージID」をツクール変数の添字に出来ます。
+ * 
+ *   ツクール変数制御文字 \V[n], \C[n] の添字nにも「メッセージID」を指定できるようにしました(ver.1.2.0)
  *
  *
  * 【CSVファイル側で有効なコマンド】
@@ -321,6 +328,15 @@ var CsvImportor =
 
 		for (var message of messages)
 		{
+			// ツクール変数の添え字もメッセージIDに対応
+			// \P[n], \N[n]もあるが対応する必要性が余り感じられないので様子見
+			message = parseCmd(message, "\\V", args => {
+				return tryReplace(args)[0];
+			});
+			message = parseCmd(message, "\\C", args => {
+				return tryReplace(args)[0];
+			});
+
 			// 単語を置き換える。再起コマンド実行可能。
 			var textFound = false;
 			message = parseCmd(message, "\\M", args => {
@@ -463,6 +479,13 @@ var CsvImportor =
 				tryReplace(v, list);
 			}
 		} else {
+			// ツクールの変数が添字に使用されてる場合はパースする
+			// ここで TEST_\V[0] のように組み合わせられてる可能性も考慮すること
+			value = parseCmd(value, "\\V", args => {
+				args = tryReplace(args)[0]; // Vの添字の再帰チェック。いらないかもしれない。
+				return $gameVariables.value(parseInt(args)).toString();
+			});
+
 			var result = $externMessage.map[value];
 			if (result === undefined) {
 				list.push(value);
