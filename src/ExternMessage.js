@@ -1,7 +1,8 @@
 /*:
  * @plugindesc Include message from external file.
  * @author Baizan(twitter:into_vision)
- * @version 1.2.0
+ * @target MZ
+ * @version 1.3.0
  * 
  * @param Line Max
  * @desc
@@ -22,7 +23,13 @@
 /*:ja
  * @plugindesc 外部ファイルから文章を読み取ります。
  * @author バイザン(twitter:into_vision)
- * @version 1.2.0
+ * @target MZ
+ * @version 1.3.0
+ * 		1.3.0 2021/04/05	直接スクリプトが記述できるように
+ * 							多言語対応向けに参照する列番号を指定できるように
+ * 		1.2.1 2021/04/04	エクセルを介さず「文章」で「\M[\V[0]]」のように変数を添え字にすると不正なIDとされる問題の修正。
+ * 							「\V[メッセージID]」が表示できない問題の修正。
+ * 							MZ向けにアノテーションを指定。
  * 		1.2.0 2021/03/06	ツクール変数を添字に指定できるように
  * 							ツクール変数の添字にもメッセージIDを指定できるように
  * 		1.1.0 2020/09/23	Window関連のコマンド追加。再起コマンド実行可能なテキスト置き換え機能実装
@@ -50,6 +57,11 @@
  * @desc :nameコマンドを使用した際に名前タグを挿入します。
  * @default true
  * @type boolean
+ * 
+ * @param Default Reference Column Index
+ * @desc デフォルトで値として参照するcsvの列番号
+ * @default 1
+ * @type number
  * 
  * @help
  * 【セットアップ方法】
@@ -104,6 +116,29 @@
  *   
  *   :fadein
  *   	黒暗転状態から画面を表示させます。
+ *   
+ * 【上級者向けコマンド】
+ *   :script
+ *   :end
+ *   	script～endの間の文章をスクリプトとして解釈します。
+ *   	スクリプトには以下の制限があります。
+ *   	・:script及び:endは必ず行の先頭で記述する必要があります。
+ *   	・スクリプト内はメッセージID等の置換処理は行われません。
+ *   	・実際のスクリプトの実行は、文章の置換処理終了後の「会話」の最中になります。
+ *   	　そのためスクリプトを実行してから\V[n]の値を参照して内容を変更するということはできません。
+ *   	　もし置換処理前にスクリプトを実行したい場合は「:script[immediate]」を使用して下さい。
+ * 
+ *   	　※イベントエディタ上の文章ウィンドウの「行」単位で置換処理が実行されます。
+ *   	　　そのため通常の「:script」で実行したとしても次の「行」に行けば値を反映した状態にすることもできます。
+ *   	　
+ *   :script[immediate]
+ *   :end
+ *   	基本的な使い方は通常のscriptと同じです。
+ *   	唯一の違いは文章コマンドにスタックされず、置換処理の最中にコマンドが見つかったら直ちに実行されます。
+ *   	これにより事前に\V[n]の値を初期化し、使用するメッセージIDを分岐させることも可能です。
+ *   	注意点としてメッセージIDを使用して複雑に階層化された置換処理は必ずしも文章の前方から順番に実行されるわけではありません。
+ *   	「行」の先頭または中身を変えたい\V[n]よりも前の階層あるいは同じ階層の先頭で記述して下さい。
+ *   	会話文が表示される前に実行されるので会話の表示タイミングで画面効果や演出を行いたい場合は通常の「:script」を使用してください。
  */
 
 //---------------------------------------------------------------------------------------------
@@ -114,7 +149,7 @@ var $externMessage =
 	setup: function() {
 		// setupはゲーム起動時の他ロード時でも呼ばれる。
 		// しかし内部データは書き換えることは(少なくともこのプラグインでは)無いのでスキップする。
-		if (this.map) {
+		if (this._map) {
 			return;
 		}
 
@@ -124,18 +159,32 @@ var $externMessage =
 		// 2次元配列に変換
 		var result = CsvImportor.parseFromCSV($externMessageCSV);
 
-		this.map = new Array();
+		this._map = new Array();
 		for(var i = 0; i < result.length; i++)
 		{
 			var currentLine = result[i];
 			var guid = currentLine[0];
-			this.map[guid] = this.convertToMessage(currentLine);
+			this._map[guid] = currentLine.slice(1);
 		}
-	}, 
+	},
 
-	convertToMessage: function(currentLine) {
-		return currentLine[1];
-	}
+	// keyに一致する要素を取得します。
+	getValue: function(key) {
+		var line = this._map[key];
+		if(!line) {
+			return undefined;
+		}
+
+		// 指定列がない場合は場合はcsv要素の1列目を使用する。
+		if(line.length <= this.ValueReferenceColumnIndex) {
+			return line[0];
+		}
+		return line[this.ValueReferenceColumnIndex - 1];
+	},
+
+	// valueが参照するcsvの列番号
+	// 例えば複数言語を一つのcsvで管理する場合はこの番号で切り替える事ができる。
+	ValueReferenceColumnIndex: 1,
 };
 
 // CSVファイルのグローバルアクセス
@@ -150,6 +199,7 @@ var $externMessageCSV = null;
 	$externMessage.LineMax = Number(safety('Line Max', '4'));
 	$externMessage.CsvFilePath = String(safety('Csv File Path', 'ExternMessage.csv'));
 	$externMessage.UseNameTag = safety('Use Name Tag', 'true') === 'true';
+	$externMessage.ValueReferenceColumnIndex = Number(safety('Default Reference Column Index', '1'));
 
 	// DataManagerへ読み込みの予約とセットアップの予約
 	DataManager._databaseFiles.push({ name:'$externMessageCSV',	src:$externMessage.CsvFilePath	});
@@ -160,6 +210,10 @@ var $externMessageCSV = null;
 	DataManager.createGameObjects = function() {
 		_DataManager_createGameObjects.apply(this, arguments);
 		$externMessage.setup();
+
+		if ($externMessage.replaceCommand101 != Game_Interpreter.prototype.command101) {
+			alert("Game_Interpreter.prototype.command101が別のプラグインによってオーバーライドされています。\nもしYEP_MessageCoreをご利用の場合はプラグインの順番をExternalMessageよりも前に変更して下さい。");
+		}
 	};
 })();
 
@@ -273,41 +327,98 @@ var CsvImportor =
 // Game_Interpreter拡張
 //---------------------------------------------------------------------------------------------
 (function() {
-	// 制御文字置換メソッド
-	// 制御文字を変更する場合はこれをoverrideする
-	Game_Interpreter.replaceCtrlText = function(text) {
-		return text.replace(/\\M\[(\S+)\]/gi, function() {
-			var key = arguments[1];
-			var value = $externMessage.map[key];
-			if (value === undefined) {
-				alert("不正なメッセージIDが検出されました:" + key);
-			}
-			return value;
-		});
-	};
-
-	// commandListが渡されるので横取りして変換する
-	const _Game_Interpreter_setup = Game_Interpreter.prototype.setup;
-	Game_Interpreter.prototype.setup = function(list, eventId) {
-		var replaced = new Array();
-		for (const item of list) {
-			if (item.code == 401) { // message
-				Game_Interpreter.convertMessageCommand(replaced, item);
-			} else {
-				replaced.push(item);
+	// ２つのコマンドが等しいかチェック
+	Game_Interpreter.prototype.commandEqual = function(commandX, commandY) {
+		if(commandX.code != commandY.code) {
+			return false;
+		}
+		if(commandX.parameters.length != commandY.parameters.length) {
+			return false;
+		}
+		for(var i = 0; i < commandX.parameters.length; i++) {
+			if(commandX.parameters[i] != commandY.parameters[i]) {
+				return false;
 			}
 		}
-		_Game_Interpreter_setup.apply(this, [replaced, eventId]);
+		return true;
+	}
+	// command101 新規文章ウィンドウの表示 をオーバーライドし逐次コマンド実行を行う
+	// このメソッドはオリジナルのcommand101コードを引用しています。
+	Game_Interpreter.prototype.command101 = function(params) {
+		if ($gameMessage.isBusy()) {
+			return false;
+		}
+
+		// MZ互換
+		if (params === undefined) {
+			params = this._params;
+		}
+
+		$gameMessage.setFaceImage(params[0], params[1]);
+		$gameMessage.setBackground(params[2]);
+		$gameMessage.setPositionType(params[3]);
+		if (!isGameMakerMV()) { // MZ互換
+			$gameMessage.setSpeakerName(params[4]);
+		}
+		
+		while (this.nextEventCode() === 401) {  // Text data
+			this._index++;
+			var item = this.currentCommand();
+
+			// 401文章コマンドを展開
+			var replaced = convertMessageCommand(item);
+
+			// 展開された結果何もなくなったらスキップ
+			if(replaced.length == 0) {
+				continue;
+			}
+			// 何も展開されなかったらそのまま登録
+			else if(replaced.length == 1 && this.commandEqual(item, replaced[0])) {
+				$gameMessage.add(item.parameters[0]);
+			}
+			// 一つ以上のコマンドに展開されたら現在の要素を上書きして挿入
+			else {
+				// indexから1要素削除してreplaceのすべての要素を挿入
+				this._list.splice(this._index, 1, ...replaced);
+				this._index--;
+			}
+		}
+		switch (this.nextEventCode()) {
+		case 102:  // Show Choices
+			this._index++;
+			this.setupChoices(this.currentCommand().parameters);
+			break;
+		case 103:  // Input Number
+			this._index++;
+			this.setupNumInput(this.currentCommand().parameters);
+			break;
+		case 104:  // Select Item
+			this._index++;
+			this.setupItemChoice(this.currentCommand().parameters);
+			break;
+		}
+
+		if (isGameMakerMV()) {
+			this._index++;
+			this.setWaitMode('message');
+			return false;
+		} else {
+			this.setWaitMode('message');
+			return true;
+		}
 	};
 
+	// 後で他のプラグインがオーバーライドした場合のチェック用に控える
+	$externMessage.replaceCommand101 = Game_Interpreter.prototype.command101;
+
 	// メッセージコマンドを変換する
-	Game_Interpreter.convertMessageCommand = function(dest, item)
+	convertMessageCommand = function(item)
 	{
 		var context = {
 			lastName: "",
 			lastFace: "",
 			lastFaceID: 0,
-			lineCount: getCurrentLine(dest),
+			lineCount: 0,
 			windowMode: 0, // 0:通常, 1:暗く, 2:透明
 			layoutMode: 2, // 0:上, 1中, 2下
 			indent: item.indent,
@@ -315,52 +426,153 @@ var CsvImportor =
 
 		// 文章の場合は必ず1行
 		// 参照:Game_Interpreter.prototype.command101
-		this.convertMessageCommandCore(dest, item.parameters[0], context);
+		var dest = new Array();
+		this.convertMessageCommandCore(dest, item.parameters[0], context, 0);
+		return dest;
 	}
 
-	Game_Interpreter.convertMessageCommandCore = function(dest, text, context)
+	// 現在の行にスクリプトの開始コマンドがある場合はendまでをスクリプトとしてコンバートする関数
+	convertScript = function(messages, idx)
 	{
-		// メッセージ用制御文字を置換
-		text = Game_Interpreter.replaceCtrlText(text);
+		// 先頭タグをチェックするラムダ式
+		var headTagCheck = (str, tag) => {
+			// デバッグ中はタグが先頭にあるかチェックを行う
+			if ($gameTemp.isPlaytest()) {
+				var checkIdx = str.indexOf(tag);
+				if (checkIdx < 0) {
+					return false;
+				} else if(checkIdx != 0) {
+					alert(tag + "は必ず先頭で記述する必要があります。");
+				} else if(checkIdx == 0 && str != tag) {
+					alert("この行にタグ以外を記述している、または無効な引数です。");
+				}
+			} else {
+				// 通常はイコール比較だけで良い
+				if (str != tag) {
+					return false;
+				}
+			}
+			return true;
+		};
+		
+		// immediateスクリプトの場合は文章置換前に即時実行する。
+		var immediate = false;
+		if (headTagCheck(messages[idx], ":script[immediate]")) {
+			immediate = true;
+		} else if(!headTagCheck(messages[idx], ":script")) {
+			return null; // この行が:scriptではないならスキップ
+		}
 
-		// 改行ごとに別メッセージとして処理
-		var messages = text.replace("\r\n", "\n").split("\n");
-
-		for (var message of messages)
+		// :endタグが見つかるまで結合
+		var source = "";
+		for (idx++; idx < messages.length; idx++)
 		{
+			var message = messages[idx];
+			if(headTagCheck(message, ":end")) {
+				return { scopeEndIdx: idx, source: source, immediate: immediate };
+			} else {
+				// デバッグ中は簡易文法チェックを行う
+				if($gameTemp.isPlaytest()) {
+					if(message.indexOf('""') >= 0) {
+						alert('スクリプト中に「"」(ダブルクォート)を使用しないで下さい。これはcsvファイルでは「""」(2つのダブルクォート)に変換されてしまうためです。');
+						return { failed: true };
+					}
+				}
+				// 式の途中で複数行に分割されている場合に改行が消えてるとまずい
+				source += message + "\n";
+			}
+		}
+
+		alert("スクリプトが :endタグ で閉じられていません。");
+		return { failed: true };
+	}
+
+	// メッセージIDの展開を行います。
+	// dest: コマンドの置き換え用配列
+	// text: 処理する1行分の文章コマンドのテキスト
+	// context: 各種再帰処理で引き継ぐ情報
+	// depth: 再帰処理の深度。0でオリジナルの文章コマンドからの呼び出し。
+	convertMessageCommandCore = function(dest, text, context, depth)
+	{
+		// 改行ごとに別メッセージとして処理
+		var messages = text.split("\n");
+
+		for (var i = 0; i < messages.length; ++i)
+		{
+			var message = messages[i];
+
+			//----------------------------------------------------------------------------
+			// parse script.
+			//----------------------------------------------------------------------------
+			// scriptの解析
+			// messageが「:script」なら「:end」までをscriptとして処理する。
+			// この処理は一番最初に行い、script内に制御文字があってもスキップさせる。
+			// ただし、ツクールの文章ウィンドウでベタ書きしてはいけない。
+			// 理由としては文章ウィンドウでは4行以上記述できないのと複数コマンドとして分割されてしまい解決が難しいため
+			if(depth > 0)
+			{
+				var script = this.convertScript(messages, i);
+				if (script && script.failed) {
+					break; // 異常終了処理
+				}
+
+				// 有効なscriptが見つかったなら追加または実行し次の行へ
+				if (script) {
+					i = script.scopeEndIdx;
+					// immediateモードの場合は直ちに実行
+					if (script.immediate) {
+						eval(script.source);
+					} else {
+						dest.push({ code: 355, indent: context.indent, parameters: [ script.source ] });
+					}
+					continue;
+				}
+			}
+			// デバッグ中は簡易文法チェックを行う
+			else if($gameTemp.isPlaytest())
+			{
+				if(message.indexOf(':script') >= 0) {
+					alert('イベントエディタの文章ウィンドウに直接スクリプトを書くのは禁止されています。');
+					break;
+				}
+			}
+
+			//----------------------------------------------------------------------------
+			// replace message id.
+			//----------------------------------------------------------------------------
 			// ツクール変数の添え字もメッセージIDに対応
 			// \P[n], \N[n]もあるが対応する必要性が余り感じられないので様子見
 			message = parseCmd(message, "\\V", args => {
-				return tryReplace(args)[0];
+				args = tryReplace(args);
+				return $gameVariables.value(parseInt(args)).toString();
 			});
 			message = parseCmd(message, "\\C", args => {
-				return tryReplace(args)[0];
+				return tryReplace(args);
 			});
 
 			// 単語を置き換える。再起コマンド実行可能。
 			var textFound = false;
 			message = parseCmd(message, "\\M", args => {
-				var result = tryReplace(args);
-				if (result.length > 0) {
-					textFound = true;
-					// 文章の間で見つかった場合は一旦結合させてそれを後段ですべて丸投げする。
-					return result[0];
-				} else {
-					return null;
-				}
+				textFound = true;
+				return tryReplace(args);
 			});
+
+			// textの置き換えが発生したら再帰処理を行い、置き換え後の文章を再処理する。
 			if (textFound) {
 				// text置き換え及び前後の文字がすべて結合した状態になっている
 				// 文章開始:text[TEST]文章終了→文章開始 置き換え文章 文章終了
-				this.convertMessageCommandCore(dest, message, context);
+				this.convertMessageCommandCore(dest, message, context, depth + 1);
 
 				// 既に処理済みなのでこの行に関しては後続の処理はスキップして良い
 				continue;
 			}
 
+			//----------------------------------------------------------------------------
+			// replace commands.
+			//----------------------------------------------------------------------------
 			// 名前の取り出し
 			message = parseCmd(message, ":name", args => {
-				args = tryReplace(args);
+				args = tryReplaceMultiArgs(args);
 				context.lastName = args[0];
 				// メモ:Faceが変更される場合にウィンドウが一度閉じるアニメーションが挟まります。
 				context.lastFace = args[1] || "";
@@ -371,7 +583,7 @@ var CsvImportor =
 			});
 			// 表情の種類を選択します
 			message = parseCmd(message, ":face", args => {
-				context.lastFaceID = tryReplace(args)[0];
+				context.lastFaceID = tryReplace(args);
 				context.lineCount = $externMessage.LineMax;
 			});
 			// :pageが含まれていたら次の行でページ送りさせる。
@@ -380,7 +592,7 @@ var CsvImportor =
 			});
 			// コモンイベントの呼び出し
 			message = parseCmd(message, ":event", args => {
-				var id = tryReplace(args)[0];
+				var id = tryReplace(args);
 				dest.push({ code: 117, indent: context.indent, parameters: [ parseInt(id) ] });
 				context.lineCount = $externMessage.LineMax; // 特殊なcodeの実行後は必ず改ページする必要がある
 			});
@@ -469,33 +681,36 @@ var CsvImportor =
 	};
 	
 	// 値がマップされている場合に置き換える
-	tryReplace = function(value, list) {
-		value = value.trim();
+	tryReplace = function(value) {
+		var result = $externMessage.getValue(value.trim());
+		if (result === undefined) {
+			return value;
+		} else {
+			return tryReplace(result);
+		}
+	};
+	
+	// 複数引数が含まれる可能性のあるばあいは,で区切って再展開する。
+	tryReplaceMultiArgs = function(value, list) {
+		value = value.trim()
 		if (list === undefined) {
 			list = new Array();
 		}
 		if (value.includes(',')) {
 			for (const v of value.split(',')) {
-				tryReplace(v, list);
+				tryReplaceMultiArgs(v, list);
 			}
 		} else {
-			// ツクールの変数が添字に使用されてる場合はパースする
-			// ここで TEST_\V[0] のように組み合わせられてる可能性も考慮すること
-			value = parseCmd(value, "\\V", args => {
-				args = tryReplace(args)[0]; // Vの添字の再帰チェック。いらないかもしれない。
-				return $gameVariables.value(parseInt(args)).toString();
-			});
-
-			var result = $externMessage.map[value];
+			var result = $externMessage.getValue(value);
 			if (result === undefined) {
 				list.push(value);
 			} else {
-				tryReplace(result, list);
+				tryReplaceMultiArgs(result, list);
 			}
 		}
 		return list;
 	};
-	
+
 	// keyに一致するコマンドがあった場合にメソッドを呼び出します。
 	// 続けて[]が付与されていたら引数として解釈します。
 	parseCmd = function(text, key, call) {
