@@ -2,7 +2,7 @@
  * @plugindesc Include message from external file.
  * @author Baizan(twitter:into_vision)
  * @target MZ
- * @version 1.3.0
+ * @version 1.3.1
  * 
  * @param Line Max
  * @desc
@@ -14,17 +14,28 @@
  * @default ExternMessage.csv
  * @type string
  * 
+ * @param Csv File Encode
+ * @desc
+ * @default shift_jis
+ * @type string
+ * 
  * @param Use Name Tag
  * @desc
  * @default true
  * @type boolean
+ * 
+ * @param Default Reference Column Index
+ * @desc
+ * @default 1
+ * @type number
  */
 
 /*:ja
  * @plugindesc 外部ファイルから文章を読み取ります。
  * @author バイザン(twitter:into_vision)
  * @target MZ
- * @version 1.3.0
+ * @version 1.3.1
+ * 		1.3.1 2021/04/23	文字のエンコード方式を指定できるように
  * 		1.3.0 2021/04/05	直接スクリプトが記述できるように
  * 							多言語対応向けに参照する列番号を指定できるように
  * 		1.2.1 2021/04/04	エクセルを介さず「文章」で「\M[\V[0]]」のように変数を添え字にすると不正なIDとされる問題の修正。
@@ -51,6 +62,11 @@
  * @param Csv File Path
  * @desc メッセージが記述されてるcsvファイルパス。ルートパスはdataフォルダになっています。
  * @default ExternMessage.csv
+ * @type string
+ * 
+ * @param Csv File Encode
+ * @desc csvファイルのエンコード方式。一般的に「shift_jis」または「utf-8」を指定する。
+ * @default shift_jis
  * @type string
  * 
  * @param Use Name Tag
@@ -198,6 +214,7 @@ var $externMessageCSV = null;
 	};
 	$externMessage.LineMax = Number(safety('Line Max', '4'));
 	$externMessage.CsvFilePath = String(safety('Csv File Path', 'ExternMessage.csv'));
+	$externMessage.CsvFileEncode = String(safety('Csv File Encode', 'shift_jis'));
 	$externMessage.UseNameTag = safety('Use Name Tag', 'true') === 'true';
 	$externMessage.ValueReferenceColumnIndex = Number(safety('Default Reference Column Index', '1'));
 
@@ -301,7 +318,7 @@ var CsvImportor =
 		var xhr = new XMLHttpRequest();
 		var url = 'data/' + src;
 		xhr.open('GET', url);
-		xhr.overrideMimeType('text/plain; charset=shift_jis');
+		xhr.overrideMimeType(`text/plain; charset=${$externMessage.CsvFileEncode}`);
 		xhr.onload = function() {
 			if (xhr.status < 400) {
 				window[name] = xhr.responseText;
