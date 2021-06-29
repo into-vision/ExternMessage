@@ -2,7 +2,7 @@
  * @plugindesc Include message from external file.
  * @author Baizan(twitter:into_vision)
  * @target MZ
- * @version 1.3.1
+ * @version 1.3.2
  * 
  * @param Line Max
  * @desc
@@ -34,7 +34,8 @@
  * @plugindesc 外部ファイルから文章を読み取ります。
  * @author バイザン(twitter:into_vision)
  * @target MZ
- * @version 1.3.1
+ * @version 1.3.2
+ * 		1.3.2 2021/06/29	メッセージが2回目以降に変更されない問題の修正
  * 		1.3.1 2021/04/23	文字のエンコード方式を指定できるように
  * 		1.3.0 2021/04/05	直接スクリプトが記述できるように
  * 							多言語対応向けに参照する列番号を指定できるように
@@ -344,21 +345,6 @@ var CsvImportor =
 // Game_Interpreter拡張
 //---------------------------------------------------------------------------------------------
 (function() {
-	// ２つのコマンドが等しいかチェック
-	Game_Interpreter.prototype.commandEqual = function(commandX, commandY) {
-		if(commandX.code != commandY.code) {
-			return false;
-		}
-		if(commandX.parameters.length != commandY.parameters.length) {
-			return false;
-		}
-		for(var i = 0; i < commandX.parameters.length; i++) {
-			if(commandX.parameters[i] != commandY.parameters[i]) {
-				return false;
-			}
-		}
-		return true;
-	}
 	// command101 新規文章ウィンドウの表示 をオーバーライドし逐次コマンド実行を行う
 	// このメソッドはオリジナルのcommand101コードを引用しています。
 	Game_Interpreter.prototype.command101 = function(params) {
@@ -382,22 +368,24 @@ var CsvImportor =
 			this._index++;
 			var item = this.currentCommand();
 
+			// 置き換えた場合の削除アイテム数
+			// 初回置き換え時は1、それ以外は前回展開された要素数分削除する。
+			var removeLength = item.expandNum ? item.expandNum : 0;
+
 			// 401文章コマンドを展開
 			var replaced = convertMessageCommand(item);
 
-			// 展開された結果何もなくなったらスキップ
-			if(replaced.length == 0) {
-				continue;
-			}
 			// 何も展開されなかったらそのまま登録
-			else if(replaced.length == 1 && this.commandEqual(item, replaced[0])) {
+			if (item.expandNum === undefined) {
 				$gameMessage.add(item.parameters[0]);
-			}
-			// 一つ以上のコマンドに展開されたら現在の要素を上書きして挿入
-			else {
-				// indexから1要素削除してreplaceのすべての要素を挿入
-				this._list.splice(this._index, 1, ...replaced);
-				this._index--;
+
+				// 今回は置き換えられなかったが前回置き換えられていたら削除
+				if (removeLength > 0) {
+					this._list.splice(this._index + 1, removeLength);
+				}
+			} else {
+				// 一つ以上のコマンドに展開されたら現在の要素を上書きして挿入
+				this._list.splice(this._index + 1, removeLength, ...replaced);
 			}
 		}
 		switch (this.nextEventCode()) {
@@ -445,6 +433,13 @@ var CsvImportor =
 		// 参照:Game_Interpreter.prototype.command101
 		var dest = new Array();
 		this.convertMessageCommandCore(dest, item.parameters[0], context, 0);
+
+		// 展開された場合はexpandNumプロパティを追加して展開行数を記録しておく
+		if (dest.length != 1 || !this.commandEqual(dest[0], item)) {
+			item.expandNum = dest.length;
+		} else {
+			delete item.expandNum;
+		}
 		return dest;
 	}
 
@@ -797,6 +792,22 @@ var CsvImportor =
 		}
 		return lineCount;
 	};
+
+	// ２つのコマンドが等しいかチェック
+	commandEqual = function(commandX, commandY) {
+		if(commandX.code != commandY.code) {
+			return false;
+		}
+		if(commandX.parameters.length != commandY.parameters.length) {
+			return false;
+		}
+		for(var i = 0; i < commandX.parameters.length; i++) {
+			if(commandX.parameters[i] != commandY.parameters[i]) {
+				return false;
+			}
+		}
+		return true;
+	}
 
 	isGameMakerMV = function() {
 		return Utils.RPGMAKER_NAME === "MV";
