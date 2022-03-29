@@ -2,7 +2,7 @@
  * @plugindesc Include message from external file.
  * @author Baizan(twitter:into_vision)
  * @target MZ
- * @version 1.3.2
+ * @version 1.3.3
  * 
  * @param Line Max
  * @desc
@@ -34,7 +34,8 @@
  * @plugindesc 外部ファイルから文章を読み取ります。
  * @author バイザン(twitter:into_vision)
  * @target MZ
- * @version 1.3.2
+ * @version 1.3.3
+ * 		1.3.3 2022/03/29	csvファイルに空のセルが存在すると空文字が有効なMessasgeIDとして解釈されてしまう問題の修正
  * 		1.3.2 2021/06/29	メッセージが2回目以降に変更されない問題の修正
  * 		1.3.1 2021/04/23	文字のエンコード方式を指定できるように
  * 		1.3.0 2021/04/05	直接スクリプトが記述できるように
@@ -181,12 +182,21 @@ var $externMessage =
 		{
 			var currentLine = result[i];
 			var guid = currentLine[0];
+			// csvファイル末尾に空のセルが追加されている可能性がある
+			if(guid === '') {
+				continue;
+			}
+			// 多言語対応のため2列目以降をすべて取得
 			this._map[guid] = currentLine.slice(1);
 		}
 	},
 
 	// keyに一致する要素を取得します。
 	getValue: function(key) {
+		// 空の文字含めて常に無効値とする
+		if(key === '' || key === null || key === undefined) {
+			return undefined;
+		}
 		var line = this._map[key];
 		if(!line) {
 			return undefined;
