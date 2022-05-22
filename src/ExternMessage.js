@@ -2,7 +2,7 @@
  * @plugindesc Include message from external file.
  * @author Baizan(twitter:into_vision)
  * @target MZ
- * @version 1.3.3
+ * @version 1.3.4
  * 
  * @param Line Max
  * @desc
@@ -34,7 +34,8 @@
  * @plugindesc 外部ファイルから文章を読み取ります。
  * @author バイザン(twitter:into_vision)
  * @target MZ
- * @version 1.3.3
+ * @version 1.3.4
+ * 		1.3.4 2022/05/23	改行付き変数で置き換えられた後再表示されたときにメッセージが増えていく問題を修正
  * 		1.3.3 2022/03/29	csvファイルに空のセルが存在すると空文字が有効なMessasgeIDとして解釈されてしまう問題の修正
  * 		1.3.2 2021/06/29	メッセージが2回目以降に変更されない問題の修正
  * 		1.3.1 2021/04/23	文字のエンコード方式を指定できるように
@@ -373,7 +374,10 @@ var CsvImportor =
 		if (!isGameMakerMV()) { // MZ互換
 			$gameMessage.setSpeakerName(params[4]);
 		}
-		
+
+		// this._listを直接変更すると次回以降引き継がれる可能性があるのでcloneに置き換える必要があります。
+		var listCloned = false;
+
 		while (this.nextEventCode() === 401) {  // Text data
 			this._index++;
 			var item = this.currentCommand();
@@ -391,9 +395,17 @@ var CsvImportor =
 
 				// 今回は置き換えられなかったが前回置き換えられていたら削除
 				if (removeLength > 0) {
+					if(!listCloned) {
+						listCloned = true;
+						this._list = this._list.slice();
+					}
 					this._list.splice(this._index + 1, removeLength);
 				}
 			} else {
+				if(!listCloned) {
+					listCloned = true;
+					this._list = this._list.slice();
+				}
 				// 一つ以上のコマンドに展開されたら現在の要素を上書きして挿入
 				this._list.splice(this._index + 1, removeLength, ...replaced);
 			}
