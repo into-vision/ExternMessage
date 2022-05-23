@@ -2,7 +2,7 @@
  * @plugindesc Include message from external file.
  * @author Baizan(twitter:into_vision)
  * @target MZ
- * @version 1.3.4
+ * @version 1.3.5
  * 
  * @param Line Max
  * @desc
@@ -34,7 +34,8 @@
  * @plugindesc 外部ファイルから文章を読み取ります。
  * @author バイザン(twitter:into_vision)
  * @target MZ
- * @version 1.3.4
+ * @version 1.3.5
+ * 		1.3.5 2022/05/24	展開された情報が変に残ってしまう問題を修正
  * 		1.3.4 2022/05/23	改行付き変数で置き換えられた後再表示されたときにメッセージが増えていく問題を修正
  * 		1.3.3 2022/03/29	csvファイルに空のセルが存在すると空文字が有効なMessasgeIDとして解釈されてしまう問題の修正
  * 		1.3.2 2021/06/29	メッセージが2回目以降に変更されない問題の修正
@@ -381,33 +382,20 @@ var CsvImportor =
 		while (this.nextEventCode() === 401) {  // Text data
 			this._index++;
 			var item = this.currentCommand();
-
-			// 置き換えた場合の削除アイテム数
-			// 初回置き換え時は1、それ以外は前回展開された要素数分削除する。
-			var removeLength = item.expandNum ? item.expandNum : 0;
-
+	
 			// 401文章コマンドを展開
 			var replaced = convertMessageCommand(item);
 
 			// 何も展開されなかったらそのまま登録
-			if (item.expandNum === undefined) {
+			if (replaced.length === 1 && commandEqual(replaced[0], item)) {
 				$gameMessage.add(item.parameters[0]);
-
-				// 今回は置き換えられなかったが前回置き換えられていたら削除
-				if (removeLength > 0) {
-					if(!listCloned) {
-						listCloned = true;
-						this._list = this._list.slice();
-					}
-					this._list.splice(this._index + 1, removeLength);
-				}
 			} else {
 				if(!listCloned) {
 					listCloned = true;
 					this._list = this._list.slice();
 				}
-				// 一つ以上のコマンドに展開されたら現在の要素を上書きして挿入
-				this._list.splice(this._index + 1, removeLength, ...replaced);
+				// 一つ以上のコマンドに展開されたら次の要素として挿入
+				this._list.splice(this._index + 1, 0, ...replaced);
 			}
 		}
 		switch (this.nextEventCode()) {
@@ -455,13 +443,6 @@ var CsvImportor =
 		// 参照:Game_Interpreter.prototype.command101
 		var dest = new Array();
 		this.convertMessageCommandCore(dest, item.parameters[0], context, 0);
-
-		// 展開された場合はexpandNumプロパティを追加して展開行数を記録しておく
-		if (dest.length != 1 || !this.commandEqual(dest[0], item)) {
-			item.expandNum = dest.length;
-		} else {
-			delete item.expandNum;
-		}
 		return dest;
 	}
 
