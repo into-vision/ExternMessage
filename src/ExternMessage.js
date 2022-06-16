@@ -2,7 +2,7 @@
  * @plugindesc Include message from external file.
  * @author Baizan(twitter:into_vision)
  * @target MZ
- * @version 1.3.5
+ * @version 1.3.6
  * 
  * @param Line Max
  * @desc
@@ -34,7 +34,9 @@
  * @plugindesc 外部ファイルから文章を読み取ります。
  * @author バイザン(twitter:into_vision)
  * @target MZ
- * @version 1.3.5
+ * @version 1.3.6
+ * 		1.3.6 2022/06/17	ラベルジャンプした後に展開情報が残ったままになる問題を修正
+ * 							スクリプトも再実行されるように改良
  * 		1.3.5 2022/05/24	展開された情報が変に残ってしまう問題を修正
  * 		1.3.4 2022/05/23	改行付き変数で置き換えられた後再表示されたときにメッセージが増えていく問題を修正
  * 		1.3.3 2022/03/29	csvファイルに空のセルが存在すると空文字が有効なMessasgeIDとして解釈されてしまう問題の修正
@@ -376,9 +378,6 @@ var CsvImportor =
 			$gameMessage.setSpeakerName(params[4]);
 		}
 
-		// this._listを直接変更すると次回以降引き継がれる可能性があるのでcloneに置き換える必要があります。
-		var listCloned = false;
-
 		while (this.nextEventCode() === 401) {  // Text data
 			this._index++;
 			var item = this.currentCommand();
@@ -390,12 +389,16 @@ var CsvImportor =
 			if (replaced.length === 1 && commandEqual(replaced[0], item)) {
 				$gameMessage.add(item.parameters[0]);
 			} else {
-				if(!listCloned) {
-					listCloned = true;
+				// 初回展開時にオリジナルを控えておく
+				// そうすることでDBから渡ってくるオリジナルのリストを書き換えずに済み
+				// 他にもラベルジャンプ時に元に戻すことも出来る
+				if(!this._originalList) {
+					this._originalList = this._list;
 					this._list = this._list.slice();
 				}
-				// 一つ以上のコマンドに展開されたら次の要素として挿入
-				this._list.splice(this._index + 1, 0, ...replaced);
+				// 元のリストのクローンなので差し替えても問題ない
+				this._list.splice(this._index, 1, ...replaced);
+				this._index--;
 			}
 		}
 		switch (this.nextEventCode()) {
@@ -425,6 +428,24 @@ var CsvImportor =
 
 	// 後で他のプラグインがオーバーライドした場合のチェック用に控える
 	$externMessage.replaceCommand101 = Game_Interpreter.prototype.command101;
+
+	// ラベルジャンプした場合はリスト上のスクリプトを再実行させる必要があるので差し替えたリストを元に戻してからジャンプさせる
+	const _Game_Interpreter_command119 = Game_Interpreter.prototype.command119;
+	Game_Interpreter.prototype.command119 = function(params) {
+		// 既にオリジナルと置き換えられていたら元に戻す。
+		this._list = this._originalList ?? this._list;
+		this._originalList = null;
+		// jump処理でオーバーランする可能性があるので丸める。
+		this._index = Math.min(this._index, this._list.length);
+		_Game_Interpreter_command119.apply(this, arguments);
+	};
+
+	// 会話開始時に初期化する
+	const _Game_Interpreter_clear = Game_Interpreter.prototype.clear;
+	Game_Interpreter.prototype.clear = function() {
+		this._originalList = null;
+		_Game_Interpreter_clear.apply(this, arguments);
+	};
 
 	// メッセージコマンドを変換する
 	convertMessageCommand = function(item)
