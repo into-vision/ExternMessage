@@ -2,7 +2,7 @@
  * @plugindesc Include message from external file.
  * @author Baizan(twitter:into_vision)
  * @target MZ
- * @version 1.3.6
+ * @version 1.3.7
  * 
  * @param Line Max
  * @desc
@@ -34,7 +34,8 @@
  * @plugindesc 外部ファイルから文章を読み取ります。
  * @author バイザン(twitter:into_vision)
  * @target MZ
- * @version 1.3.6
+ * @version 1.3.7
+ * 		1.3.7 2022/06/18	MessageIDに数値が指定されていたら例外を出すように。波括弧を間違えて使用していた場合のフェイルセーフも追加。
  * 		1.3.6 2022/06/17	ラベルジャンプした後に展開情報が残ったままになる問題を修正
  * 							スクリプトも再実行されるように改良
  * 		1.3.5 2022/05/24	展開された情報が変に残ってしまう問題を修正
@@ -185,13 +186,16 @@ var $externMessage =
 		for(var i = 0; i < result.length; i++)
 		{
 			var currentLine = result[i];
-			var guid = currentLine[0];
+			var messageID = currentLine[0];
 			// csvファイル末尾に空のセルが追加されている可能性がある
-			if(guid === '') {
+			if(messageID === '') {
 				continue;
 			}
+			if(!isNaN(messageID)) {
+				throw new Error("ExternalMessage: Do not use numeric-only MessageID.\n(MessageIDは数値のみで登録してはいけません。)");
+			}
 			// 多言語対応のため2列目以降をすべて取得
-			this._map[guid] = currentLine.slice(1);
+			this._map[messageID] = currentLine.slice(1);
 		}
 	},
 
@@ -750,6 +754,9 @@ var CsvImportor =
 	// keyに一致するコマンドがあった場合にメソッドを呼び出します。
 	// 続けて[]が付与されていたら引数として解釈します。
 	parseCmd = function(text, key, call) {
+		if (text.length === 0) {
+			return text;
+		}
 		var result = "";
 		var headIdx = 0;
 		for(var idx = text.indexOf(key, headIdx); idx != -1; idx = text.indexOf(key, headIdx))
@@ -779,6 +786,11 @@ var CsvImportor =
 	// []の中の引数を入れ子になった[]を無視して一つの引数として取り出します。
 	parseArg = function(text, idx)
 	{
+		// 開発時用の保険処理
+		if(text[idx] === '{') {
+			throw new Error("ExternalMessage: Use square brackets \"[]\" instead of curly brackets \"{}\" to specify arguments.\n(引数の指定には 波括弧\"{}\" ではなく 角括弧\"[]\" を使用してください。)");
+		}
+
 		var head = idx;
 		for (var depth = 0; idx < text.length; idx++)
 		{
