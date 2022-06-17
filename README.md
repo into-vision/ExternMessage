@@ -1,4 +1,4 @@
-# External Message
+# Extern Message
 
 文章を外部CSVファイルで記述するためのRPGツクールMV / MZ 両対応プラグイン  
 
@@ -23,9 +23,9 @@ YEP_MessageCore
 　・多言語対応したい人(文章が別ファイルなので翻訳が簡単なはず)  
 
 【セットアップ方法】  
-　1)「ExternalMessage.js」を ./js/pluguins/ フォルダに入れる  
+　1)「ExternMessage.js」を ./js/pluguins/ フォルダに入れる  
 　　以下のファイルを右クリック保存してください  
-　　<https://raw.githubusercontent.com/into-vision/ExternalMessage/master/src/ExternMessage.js>  
+　　<https://raw.githubusercontent.com/into-vision/ExternMessage/master/src/ExternMessage.js>  
 
 　2)「ExternMessage.csv」を ./data/ フォルダに 「新規作成」する。  
 　　読み込みたいcsvファイルの名前は設定で変更可能です。  
