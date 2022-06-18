@@ -2,40 +2,49 @@
  * @plugindesc Include message from external file.
  * @author Baizan(twitter:into_vision)
  * @target MZ
- * @version 1.3.7
+ * @version 1.3.8
  * 
  * @param Line Max
- * @desc
+ * @desc If the message exceeds the specified number of lines, it will be paginated.
  * @default 4
  * @type number
  * 
  * @param Csv File Path
- * @desc
+ * @desc The csv file path where the message is described. The root path is the data folder.
  * @default ExternMessage.csv
  * @type string
  * 
  * @param Csv File Encode
- * @desc
+ * @desc Encoding method for csv files. Generally "shift_jis" or "utf-8" is specified.
  * @default shift_jis
  * @type string
  * 
  * @param Use Name Tag
- * @desc
+ * @desc Inserts a name tag when the :name command is used.
  * @default true
  * @type boolean
  * 
  * @param Default Reference Column Index
- * @desc
+ * @desc csv column number to be referenced as value by default
  * @default 1
  * @type number
+ * 
+ * @param Fail Safe
+ * @desc Fail-safe so that problems can be detected in advance; if there are many MessageIDs that take a long time to load, disabling it can be expected to speed up the process.
+ * @default true
+ * @type boolean
  */
 
 /*:ja
  * @plugindesc 外部ファイルから文章を読み取ります。
  * @author バイザン(twitter:into_vision)
  * @target MZ
- * @version 1.3.7
- * 		1.3.7 2022/06/18	MessageIDに数値が指定されていたら例外を出すように。波括弧を間違えて使用していた場合のフェイルセーフも追加。
+ * @version 1.3.8
+ * 		1.3.8 2022/06/18	ツクールMVのJavaScriptエンジンでは利用できない記述があったので修正
+ * 							レガシーな書き方だった部分も変更
+ * 							プラグイン管理からフェイルセーフ機能の有効/無効を切り替えられるように
+ * 		1.3.7 2022/06/18	MessageIDに数値が指定されていたら例外を出すように
+ * 							波括弧を間違えて使用していた場合のフェイルセーフも追加
  * 		1.3.6 2022/06/17	ラベルジャンプした後に展開情報が残ったままになる問題を修正
  * 							スクリプトも再実行されるように改良
  * 		1.3.5 2022/05/24	展開された情報が変に残ってしまう問題を修正
@@ -45,9 +54,9 @@
  * 		1.3.1 2021/04/23	文字のエンコード方式を指定できるように
  * 		1.3.0 2021/04/05	直接スクリプトが記述できるように
  * 							多言語対応向けに参照する列番号を指定できるように
- * 		1.2.1 2021/04/04	エクセルを介さず「文章」で「\M[\V[0]]」のように変数を添え字にすると不正なIDとされる問題の修正。
- * 							「\V[メッセージID]」が表示できない問題の修正。
- * 							MZ向けにアノテーションを指定。
+ * 		1.2.1 2021/04/04	エクセルを介さず「文章」で「\M[\V[0]]」のように変数を添え字にすると不正なIDとされる問題の修正
+ * 							「\V[メッセージID]」が表示できない問題の修正
+ * 							MZ向けにアノテーションを指定
  * 		1.2.0 2021/03/06	ツクール変数を添字に指定できるように
  * 							ツクール変数の添字にもメッセージIDを指定できるように
  * 		1.1.0 2020/09/23	Window関連のコマンド追加。再起コマンド実行可能なテキスト置き換え機能実装
@@ -85,6 +94,11 @@
  * @desc デフォルトで値として参照するcsvの列番号
  * @default 1
  * @type number
+ * 
+ * @param Fail Safe
+ * @desc 事前に問題を察知できるようにフェイルセーフを行います。MessageIDが多くロード時間が掛かる場合は無効化することで高速化を期待できます。
+ * @default true
+ * @type boolean
  * 
  * @help
  * 【セットアップ方法】
@@ -191,8 +205,15 @@ var $externMessage =
 			if(messageID === '') {
 				continue;
 			}
-			if(!isNaN(messageID)) {
-				throw new Error("ExternalMessage: Do not use numeric-only MessageID.\n(MessageIDは数値のみで登録してはいけません。)");
+			// 事前に問題を察知できるようにフェイルセーフを施します。
+			// MessageIDが多くロード時間が掛かる場合は無効化してください。
+			if($externMessage.FailSafe) {
+				if(!isNaN(messageID)) {
+					throw new Error("ExternalMessage: Do not use numeric-only MessageID.\n(MessageIDは数値のみで登録してはいけません。)");
+				}
+				if(messageID.includes('[')) {
+					throw new Error("ExternalMessage: Do not use '[',']' in MessageID.\n(MessageID自体に '[',']' を使用しないでください。)");
+				}
 			}
 			// 多言語対応のため2列目以降をすべて取得
 			this._map[messageID] = currentLine.slice(1);
@@ -236,6 +257,7 @@ var $externMessageCSV = null;
 	$externMessage.CsvFileEncode = String(safety('Csv File Encode', 'shift_jis'));
 	$externMessage.UseNameTag = safety('Use Name Tag', 'true') === 'true';
 	$externMessage.ValueReferenceColumnIndex = Number(safety('Default Reference Column Index', '1'));
+	$externMessage.FailSafe = safety('Fail Safe', 'true') === 'true';
 
 	// DataManagerへ読み込みの予約とセットアップの予約
 	DataManager._databaseFiles.push({ name:'$externMessageCSV',	src:$externMessage.CsvFilePath	});
@@ -299,9 +321,9 @@ var CsvImportor =
 	// 文字トークンを抜き出す
 	getToken: function(text, begin, count) {
 		if(text[begin] == '"') {
-			return text.substr(begin + 1, count - 2);
+			return text.substring(begin + 1, begin + count - 1);
 		} else {
-			return text.substr(begin, count);
+			return text.substring(begin, begin + count);
 		}
 	},
 
@@ -324,7 +346,7 @@ var CsvImportor =
 	const _DataManager_loadDataFile = DataManager.loadDataFile;
 	DataManager.loadDataFile = function(name , src) {
 		var extensionBegin = src.lastIndexOf('.');
-		var extension = src.substr(extensionBegin, src.length - extensionBegin);
+		var extension = src.substring(extensionBegin, src.length);
 		if (extension == ".json") {
 			_DataManager_loadDataFile.apply(this, arguments);
 		} else {
@@ -349,7 +371,7 @@ var CsvImportor =
 			// 参照：rpg_manager/DataManager.loadDatabase
 			var prefix = 'Test_';
 			if(src.indexOf(prefix) === 0) {
-				DataManager.loadDataFile(name, src.substr(prefix.length));
+				DataManager.loadDataFile(name, src.substring(prefix.length));
 			} else {
 				DataManager._errorUrl = DataManager._errorUrl || url;
 			}
@@ -437,7 +459,7 @@ var CsvImportor =
 	const _Game_Interpreter_command119 = Game_Interpreter.prototype.command119;
 	Game_Interpreter.prototype.command119 = function(params) {
 		// 既にオリジナルと置き換えられていたら元に戻す。
-		this._list = this._originalList ?? this._list;
+		this._list = this._originalList || this._list;
 		this._originalList = null;
 		// jump処理でオーバーランする可能性があるので丸める。
 		this._index = Math.min(this._index, this._list.length);
@@ -777,7 +799,7 @@ var CsvImportor =
 			}
 		}
 		if (headIdx > 0) {
-			return result + text.substr(headIdx);
+			return result + text.substring(headIdx);
 		} else {
 			return text;
 		}
