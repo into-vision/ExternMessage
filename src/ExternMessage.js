@@ -2,7 +2,7 @@
  * @plugindesc Include message from external file.
  * @author Baizan(twitter:into_vision)
  * @target MZ
- * @version 1.3.8
+ * @version 1.3.9
  * 
  * @param Line Max
  * @desc If the message exceeds the specified number of lines, it will be paginated.
@@ -39,7 +39,8 @@
  * @plugindesc 外部ファイルから文章を読み取ります。
  * @author バイザン(twitter:into_vision)
  * @target MZ
- * @version 1.3.8
+ * @version 1.3.9
+ * 		1.3.9 2022/07/29	範囲外アクセス修正 及び ループcontinue時にコマンドリストをリセットするように修正
  * 		1.3.8 2022/06/18	ツクールMVのJavaScriptエンジンでは利用できない記述があったので修正
  * 							レガシーな書き方だった部分も変更
  * 							プラグイン管理からフェイルセーフ機能の有効/無効を切り替えられるように
@@ -455,15 +456,29 @@ var CsvImportor =
 	// 後で他のプラグインがオーバーライドした場合のチェック用に控える
 	$externMessage.replaceCommand101 = Game_Interpreter.prototype.command101;
 
-	// ラベルジャンプした場合はリスト上のスクリプトを再実行させる必要があるので差し替えたリストを元に戻してからジャンプさせる
-	const _Game_Interpreter_command119 = Game_Interpreter.prototype.command119;
-	Game_Interpreter.prototype.command119 = function(params) {
+	// コマンドリストを置換前の状態に戻します。
+	// ループ及び前の行へジャンプする時に文章をリセットしておく必要があります。
+	Game_Interpreter.prototype.rollbackList = function() {
 		// 既にオリジナルと置き換えられていたら元に戻す。
 		this._list = this._originalList || this._list;
 		this._originalList = null;
+	};
+
+	// ラベルジャンプした場合はリスト上のスクリプトを再実行させる必要があるので差し替えたリストを元に戻してからジャンプさせる
+	const _Game_Interpreter_command119 = Game_Interpreter.prototype.command119;
+	Game_Interpreter.prototype.command119 = function(params) {
+		this.rollbackList();
 		// jump処理でオーバーランする可能性があるので丸める。
-		this._index = Math.min(this._index, this._list.length);
-		_Game_Interpreter_command119.apply(this, arguments);
+		this._index = Math.min(this._index, this._list.length - 1);
+		return _Game_Interpreter_command119.apply(this, arguments);
+	};
+
+	// loop continue
+	// なお command113 は loop break です。
+	const _Game_Interpreter_command413 = Game_Interpreter.prototype.command413;
+	Game_Interpreter.prototype.command413 = function(params) {
+		this.rollbackList();
+		return _Game_Interpreter_command413.apply(this, arguments);
 	};
 
 	// 会話開始時に初期化する
