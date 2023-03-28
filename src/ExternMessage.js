@@ -2,7 +2,7 @@
  * @plugindesc Include message from external file.
  * @author Baizan(twitter:into_vision)
  * @target MZ
- * @version 1.3.10
+ * @version 1.3.11
  * 
  * @param Line Max
  * @desc If the message exceeds the specified number of lines, it will be paginated.
@@ -39,7 +39,8 @@
  * @plugindesc 外部ファイルから文章を読み取ります。
  * @author バイザン(twitter:into_vision)
  * @target MZ
- * @version 1.3.10
+ * @version 1.3.11
+ * 		1.3.11	2023/03/28	ValueReferenceColumnIndexで最終列を指定した時に正しく取得できない問題を修正
  * 		1.3.10	2022/07/30	オリジナルのコマンドに戻す際にインデックスも復元するように対応
  * 		1.3.9	2022/07/29	範囲外アクセス修正 及び ループcontinue時にコマンドリストをリセットするように修正
  * 		1.3.8	2022/06/18	ツクールMVのJavaScriptエンジンでは利用できない記述があったので修正
@@ -233,11 +234,12 @@ var $externMessage =
 			return undefined;
 		}
 
+		var idx = this.ValueReferenceColumnIndex - 1;
 		// 指定列がない場合は場合はcsv要素の1列目を使用する。
-		if(line.length <= this.ValueReferenceColumnIndex) {
-			return line[0];
-		}
-		return line[this.ValueReferenceColumnIndex - 1];
+		var value = line[0 <= idx && idx < line.length ? idx : 0];
+		// 更に返却値が空の場合も1列目を使用する。
+		// これは言語に依存しないScriptなどを宣言している場合に先頭列のみ定義しておけば良くするためにしています。
+		return value === '' ? line[0] : value;
 	},
 
 	// valueが参照するcsvの列番号
