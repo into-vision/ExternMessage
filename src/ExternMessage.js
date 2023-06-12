@@ -2,7 +2,7 @@
  * @plugindesc Include message from external file.
  * @author Baizan(twitter:into_vision)
  * @target MZ
- * @version 1.3.11
+ * @version 1.3.12
  * 
  * @param Line Max
  * @desc If the message exceeds the specified number of lines, it will be paginated.
@@ -39,7 +39,8 @@
  * @plugindesc 外部ファイルから文章を読み取ります。
  * @author バイザン(twitter:into_vision)
  * @target MZ
- * @version 1.3.11
+ * @version 1.3.12
+ * 		1.3.12	2023/06/12	:pageタグでの改行タイミングが記述されている直前の行になっていた問題の修正
  * 		1.3.11	2023/03/28	ValueReferenceColumnIndexで最終列を指定した時に正しく取得できない問題を修正
  * 		1.3.10	2022/07/30	オリジナルのコマンドに戻す際にインデックスも復元するように対応
  * 		1.3.9	2022/07/29	範囲外アクセス修正 及び ループcontinue時にコマンドリストをリセットするように修正
@@ -680,8 +681,9 @@ var CsvImportor =
 				context.lineCount = $externMessage.LineMax;
 			});
 			// :pageが含まれていたら次の行でページ送りさせる。
+			var pageFound = false;
 			message = parseCmd(message, ":page", args => {
-				context.lineCount = $externMessage.LineMax;
+				pageFound = true;
 			});
 			// コモンイベントの呼び出し
 			message = parseCmd(message, ":event", args => {
@@ -734,6 +736,7 @@ var CsvImportor =
 				}
 				dest.push({ code: 101, indent: context.indent, parameters: createParam101(context.lastFace, context.lastFaceID, context.lastName, context.windowMode, context.layoutMode) });
 				context.lineCount = 0;
+				pageFound = false;
 			}
 
 			// ページごとに名前タグの効果が切れるので挿入し直す
@@ -751,6 +754,11 @@ var CsvImportor =
 			if (message.length > 0 && !name_tag_only) {
 				dest.push({ code: 401, indent: context.indent, parameters: [ message ] });
 				context.lineCount++;
+			}
+
+			// :pageタグが見つかっていたのなら次の周で改行させる
+			if (pageFound) {
+				context.lineCount = $externMessage.LineMax;
 			}
 		}
 	}
